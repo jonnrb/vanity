@@ -1,19 +1,22 @@
-package vanity // import "kkn.fi/vanity"
+package vanity // import "go.jonnrb.io/vanity"
 
 import (
 	"bytes"
 	"html/template"
+	"io"
 	"net/http"
 	"strings"
 )
 
-type data struct {
+type importData struct {
 	ImportRoot string
 	VCS        string
 	VCSRoot    string
 }
 
-var tmpl = template.Must(template.New("main").Parse(`<!DOCTYPE html>
+type tag func(r *http.Request) (io.Reader, error)
+
+var goImportTmpl = template.Must(template.New("main").Parse(`<!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
@@ -22,31 +25,8 @@ var tmpl = template.Must(template.New("main").Parse(`<!DOCTYPE html>
 </html>
 `))
 
-// Redirect is a HTTP middleware that redirects browsers to godoc.org or
-// Go tool to VCS repository.
-func Redirect(vcs, importPath, repoRoot string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Scheme == "http" {
-			r.URL.Scheme = "https"
-			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
-			return
-		}
-		if r.Method != http.MethodGet {
-			status := http.StatusMethodNotAllowed
-			http.Error(w, http.StatusText(status), status)
-			return
-		}
-
-		if !strings.HasPrefix(strings.TrimSuffix(r.Host+r.URL.Path, "/"), importPath+"/") {
-			http.NotFound(w, r)
-			return
-		}
-		if r.FormValue("go-get") != "1" {
-			url := "https://godoc.org/" + r.Host + r.URL.Path
-			http.Redirect(w, r, url, http.StatusTemporaryRedirect)
-			return
-		}
-
+func ImportTag(vcs, importPath, repoRoot string) tag {
+	return func(r *http.Request) (io.Reader, error) {
 		var path string
 		if strings.HasPrefix(r.URL.Path, "/cmd/") {
 			path = r.URL.Path[4:]
@@ -62,18 +42,57 @@ func Redirect(vcs, importPath, repoRoot string) http.Handler {
 			vcsroot = repoRoot + "/" + shortPath[0]
 		}
 
-		d := &data{
+		d := &importData{
 			ImportRoot: r.Host + r.URL.Path,
 			VCS:        vcs,
 			VCSRoot:    vcsroot,
 		}
 		var buf bytes.Buffer
-		err := tmpl.Execute(&buf, d)
+		return &buf, goImportTmpl.Execute(&buf, d)
+	}
+}
+
+func Handle(importPath string, t tag) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Redirect to https.
+		if r.URL.Scheme == "http" {
+			r.URL.Scheme = "https"
+			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
+			return
+		}
+
+		// Only method supported is GET.
+		if r.Method != http.MethodGet {
+			status := http.StatusMethodNotAllowed
+			http.Error(w, http.StatusText(status), status)
+			return
+		}
+
+		// Redirect browsers to gddo.
+		if r.FormValue("go-get") != "1" {
+			url := "https://godoc.org/" + r.Host + r.URL.Path
+			http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+			return
+		}
+
+		if !strings.HasPrefix(strings.TrimSuffix(r.Host+r.URL.Path, "/"), importPath+"/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		body, err := t(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+			io.Copy(w, body)
 		}
-		w.Header().Set("Cache-Control", "public, max-age=300")
-		w.Write(buf.Bytes())
 	})
+}
+
+// Redirect is a HTTP middleware that redirects browsers to godoc.org or
+// Go tool to VCS repository.
+func Redirect(vcs, importPath, repoRoot string) http.Handler {
+	return Handle(importPath, ImportTag(vcs, importPath, repoRoot))
 }
