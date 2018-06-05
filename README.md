@@ -1,28 +1,23 @@
+# Vanity [![GoDoc](https://godoc.org/go.jonnrb.io/vanity?status.svg)](https://godoc.org/go.jonnrb.io/vanity)
 
-# Vanity [![Build Status](https://travis-ci.org/kare/vanity.svg?branch=master)](https://travis-ci.org/kare/vanity) [![GoDoc](https://godoc.org/kkn.fi/cmd/vanity?status.svg)](https://godoc.org/kkn.fi/vanity)
-
-## Concepts
-- VCS is Version Control System (such as Git or Mercurial)
-- VCS root is the root path the source code repository (such as github.com/kare)
-- Domain is the internet address where the Go Vanity server is hosted (such as
-  9fans.net or kkn.fi)
-- Path is the path component of the Go package (such as /cmd/tcpproxy in
-  kkn.fi/cmd/tcpproxy)
+A vanity import path is any import path that can be downloaded with
+`go get` but isn't otherwise blessed by the `go` tool (e.g. GitHub,
+BitBucket, etc.). A commonly used vanity import path is
+"golang.org/x/...". This package attempts to mimic the behavior of
+"golang.org/x/..." as closely as possible.
 
 ## Features
-- Redirects browsers to godoc.org
-- Redirects Go tool to VCS
-- Redirects HTTP to HTTPS
-- Automatic configuration of packages:
-	- All packages are redirected with full path to vcsroot.
-	- Packages whose path is prefixed with "/cmd/" redirect automatically to
-	  vcsroot by stripping the "/cmd" prefix from the package path.
-	  Example: Redirect request "kkn.fi/cmd/tcpproxy" to "github.com/kare/tcpproxy"
+ - Redirects browsers to godoc.org
+ - Redirects Go tool to VCS
+ - Redirects godoc.org to browsable files
+ - Redirects HTTP to HTTPS
 
 ## Installation
-```
-go get kkn.fi/vanity
+```bash
+go get go.jonnrb.io/vanity
 ```
 
 ## Specification
-- [Go 1.4 Custom Import Path Checking](https://docs.google.com/document/d/1jVFkZTcYbNLaTxXD9OcGfn7vYv5hWtPx9--lTx1gPMs/edit)
+- [Remote Import Paths](https://golang.org/cmd/go/#hdr-Remote_import_paths)
+- [GDDO Source Code Links](https://github.com/golang/gddo/wiki/Source-Code-Links)
+- [Custom Import Path Checking](https://docs.google.com/document/d/1jVFkZTcYbNLaTxXD9OcGfn7vYv5hWtPx9--lTx1gPMs/edit)
