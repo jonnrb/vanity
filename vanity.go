@@ -85,11 +85,28 @@ func GitHubStyleSourceTag(importPath, repoPath, ref string) tag {
 	return SourceTag(importPath, repoPath, directory, file)
 }
 
+func GogsStyleSourceTag(importPath, repoPath, ref string) tag {
+	directory := repoPath + "/src/" + ref + "{/dir}"
+	file := repoPath + "/src/" + ref + "{/dir}/{file}#L{line}"
+
+	return SourceTag(importPath, repoPath, directory, file)
+}
+
 // Creates a Handler that serves a GitHub repository at a specific importPath.
 func GitHubHandler(importPath, user, repo, vcsScheme string) http.Handler {
 	ghImportPath := "github.com/" + user + "/" + repo
 	return Handler(
 		ImportTag(importPath, "git", vcsScheme+"://"+ghImportPath),
 		GitHubStyleSourceTag(importPath, "https://"+ghImportPath, "master"),
+	)
+}
+
+// Creates a Handler that serves a repository hosted with Gogs at host at a
+// specific importPath.
+func GogsHandler(importPath, host, user, repo, vcsScheme string) http.Handler {
+	gogsImportPath := host + "/" + user + "/" + repo
+	return Handler(
+		ImportTag(importPath, "git", vcsScheme+"://"+gogsImportPath),
+		GogsStyleSourceTag(importPath, "https://"+gogsImportPath, "master"),
 	)
 }
