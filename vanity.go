@@ -1,42 +1,52 @@
 package vanity // import "go.jonnrb.io/vanity"
 
 import (
-	"bytes"
+	"fmt"
 	"html/template"
-	"io"
 	"net/http"
+	"strings"
 )
 
-type importData struct {
-	ImportRoot string
-	VCS        string
-	VCSRoot    string
+type tag string
+
+func ImportTag(importPath, vcs, vcsRoot string) tag {
+	return tag("<meta name=\"go-import\" content=\"" + importPath + " " + vcs +
+		" " + vcsRoot + "\">")
 }
 
-type tag func(r *http.Request) (io.Reader, error)
+func SourceTag(prefix, home, directory, file string) tag {
+	return tag("<meta name=\"go-source\" content=\"" + prefix + " " + home +
+		" " + directory + " " + file + "\">")
+}
 
-var goImportTmpl = template.Must(template.New("main").Parse(`<!DOCTYPE html>
+// Returns an http.Handler that serves the vanity URL information for a single
+// repository. Each tag gives additional information to agents about the
+// repository and the packages it contains. An ImportTag is basically mandatory
+// since the go tool requires it to fetch the repository.
+func Handler(tags ...tag) http.Handler {
+	tpl := func() *template.Template {
+		s := make([]string, len(tags))
+		for i, t := range tags {
+			s[i] = string(t)
+		}
+		tagBlk := strings.Join(s, "\n")
+
+		h := fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-<meta name="go-import" content="{{.ImportRoot}} {{.VCS}} {{.VCSRoot}}">
+%s
+<meta http-equiv="refresh" content="0; url={{ . }}">
 </head>
+<body>
+Nothing to see here; <a href="{{ . }}">move along</a>.
+</body>
 </html>
-`))
+`, tagBlk)
 
-func ImportTag(vcs, importPath, repoRoot string) tag {
-	return func(r *http.Request) (io.Reader, error) {
-		d := &importData{
-			ImportRoot: r.Host + r.URL.Path,
-			VCS:        vcs,
-			VCSRoot:    repoRoot,
-		}
-		var buf bytes.Buffer
-		return &buf, goImportTmpl.Execute(&buf, d)
-	}
-}
+		return template.Must(template.New("").Parse(h))
+	}()
 
-func Handle(t tag) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Redirect to https.
 		if r.URL.Scheme == "http" {
@@ -52,6 +62,8 @@ func Handle(t tag) http.Handler {
 			return
 		}
 
+		pkg := r.Host + r.URL.Path
+
 		// Redirect browsers to gddo.
 		if r.FormValue("go-get") != "1" {
 			url := "https://godoc.org/" + r.Host + r.URL.Path
@@ -59,19 +71,25 @@ func Handle(t tag) http.Handler {
 			return
 		}
 
-		body, err := t(r)
-		if err != nil {
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		if err := tpl.ExecuteTemplate(w, "", pkg); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		} else {
-			w.Header().Set("Cache-Control", "public, max-age=300")
-			io.Copy(w, body)
 		}
 	})
 }
 
-// Redirect is a HTTP middleware that redirects browsers to godoc.org or
-// Go tool to VCS repository.
-func Redirect(vcs, importPath, repoRoot string) http.Handler {
-	return Handle(ImportTag(vcs, importPath, repoRoot))
+func GitHubStyleSourceTag(importPath, repoPath, ref string) tag {
+	directory := repoPath + "/tree/" + ref + "{/dir}"
+	file := repoPath + "/blob/" + ref + "{/dir}/{file}#L{line}"
+
+	return SourceTag(importPath, repoPath, directory, file)
+}
+
+// Creates a Handler that serves a GitHub repository at a specific importPath.
+func GitHubHandler(importPath, user, repo, vcsScheme string) http.Handler {
+	ghImportPath := "github.com/" + user + "/" + repo
+	return Handler(
+		ImportTag(importPath, "git", vcsScheme+"://"+ghImportPath),
+		GitHubStyleSourceTag(importPath, "https://"+ghImportPath, "master"),
+	)
 }
