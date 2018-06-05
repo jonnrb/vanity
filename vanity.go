@@ -7,15 +7,34 @@ import (
 	"strings"
 )
 
-type tag string
-
-func ImportTag(importPath, vcs, vcsRoot string) tag {
-	return tag("<meta name=\"go-import\" content=\"" + importPath + " " + vcs +
-		" " + vcsRoot + "\">")
+type Tag interface {
+	get() string
 }
 
-func SourceTag(prefix, home, directory, file string) tag {
-	return tag("<meta name=\"go-source\" content=\"" + prefix + " " + home +
+type strTag string
+
+func (t strTag) get() string {
+	return string(t)
+}
+
+// Instructs the go tool where to fetch the repo at vcsRoot and the importPath
+// that tree should be rooted at.
+func ImportTag(importPath, vcs, vcsRoot string) Tag {
+	return strTag("<meta name=\"go-import\" content=\"" + importPath + " " +
+		vcs + " " + vcsRoot + "\">")
+}
+
+// Instructs gddo (godoc.org) how to direct browsers to browsable source code
+// for packages and their contents rooted at prefix.
+//
+// home specifies the home page of prefix, directory gives a format for how to
+// browse a directory, and file gives a format for how to view a file and go to
+// specific lines within it.
+//
+// More information can be found at https://github.com/golang/gddo/wiki/Source-Code-Links.
+//
+func SourceTag(prefix, home, directory, file string) Tag {
+	return strTag("<meta name=\"go-source\" content=\"" + prefix + " " + home +
 		" " + directory + " " + file + "\">")
 }
 
@@ -23,11 +42,11 @@ func SourceTag(prefix, home, directory, file string) tag {
 // repository. Each tag gives additional information to agents about the
 // repository and the packages it contains. An ImportTag is basically mandatory
 // since the go tool requires it to fetch the repository.
-func Handler(tags ...tag) http.Handler {
+func Handler(tags ...Tag) http.Handler {
 	tpl := func() *template.Template {
 		s := make([]string, len(tags))
 		for i, t := range tags {
-			s[i] = string(t)
+			s[i] = t.get()
 		}
 		tagBlk := strings.Join(s, "\n")
 
@@ -78,14 +97,16 @@ Nothing to see here; <a href="{{ . }}">move along</a>.
 	})
 }
 
-func GitHubStyleSourceTag(importPath, repoPath, ref string) tag {
+// Redirects gddo to browsable source files for GitHub hosted repositories.
+func GitHubStyleSourceTag(importPath, repoPath, ref string) Tag {
 	directory := repoPath + "/tree/" + ref + "{/dir}"
 	file := repoPath + "/blob/" + ref + "{/dir}/{file}#L{line}"
 
 	return SourceTag(importPath, repoPath, directory, file)
 }
 
-func GogsStyleSourceTag(importPath, repoPath, ref string) tag {
+// Redirects gddo to browsable source files for Gogs hosted repositories.
+func GogsStyleSourceTag(importPath, repoPath, ref string) Tag {
 	directory := repoPath + "/src/" + ref + "{/dir}"
 	file := repoPath + "/src/" + ref + "{/dir}/{file}#L{line}"
 
