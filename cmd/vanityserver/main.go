@@ -39,8 +39,8 @@ import (
 )
 
 var (
-	showIndex     = flag.Bool("index", false, "Show a list of repos at /")
-	exposeHealthz = flag.Bool("healthz", true, "Expose a healthz endpoint at /healthz")
+	showIndex = flag.Bool("index", false, "Show a list of repos at /")
+	noHealthz = flag.Bool("nohealthz", false, "Disable healthcheck endpoint at /healthz")
 )
 
 var host string
@@ -144,7 +144,7 @@ func registerHealthz(mux *http.ServeMux) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s fqdn [repos file]", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s fqdn [repos file]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -168,7 +168,7 @@ func main() {
 		buildMux(mux, f)
 	}
 
-	if *exposeHealthz {
+	if !*noHealthz {
 		registerHealthz(mux)
 	}
 
