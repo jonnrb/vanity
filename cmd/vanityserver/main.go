@@ -3,10 +3,13 @@ Runs a barebones vanity server over HTTP.
 
 Usage
 
-  ./vanityserver [-index] fqdn [repo file]
+  ./vanityserver [-index] [-nohealthz] fqdn [repo file]
 
 The "-index" flag enables an index page at "/" that lists all repos hosted on
 this server.
+
+The "-nohealthz" flag disables the "/healthz" endpoint that returns a 200 OK
+when everything is OK.
 
 If repo file is not given, "./repos" is used. The file has the following format:
 
@@ -36,7 +39,8 @@ import (
 )
 
 var (
-	showIndex = flag.Bool("index", false, "Show a list of repos at /")
+	showIndex     = flag.Bool("index", false, "Show a list of repos at /")
+	exposeHealthz = flag.Bool("healthz", true, "Expose a healthz endpoint at /healthz")
 )
 
 var host string
@@ -129,6 +133,15 @@ Nothing here.
 	}))
 }
 
+func registerHealthz(mux *http.ServeMux) {
+	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.WriteString(w, "OK\r\n")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s fqdn [repos file]", os.Args[0])
@@ -153,6 +166,10 @@ func main() {
 		log.Fatalf("Error opening repos path: %v", err)
 	} else {
 		buildMux(mux, f)
+	}
+
+	if *exposeHealthz {
+		registerHealthz(mux)
 	}
 
 	srv := &http.Server{
