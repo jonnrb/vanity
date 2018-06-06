@@ -5,7 +5,10 @@ package main // go.jonnrb.io/vanity
 
 import (
 	"bufio"
+	"bytes"
+	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -15,6 +18,10 @@ import (
 	"time"
 
 	"go.jonnrb.io/vanity"
+)
+
+var (
+	showIndex = flag.Bool("index", false, "Show a list of repos at /")
 )
 
 var host string
@@ -41,6 +48,8 @@ func serveRepo(mux *http.ServeMux, root string, u *url.URL) {
 }
 
 func buildMux(mux *http.ServeMux, r io.Reader) {
+	indexMap := map[string]string{}
+
 	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
@@ -53,6 +62,10 @@ func buildMux(mux *http.ServeMux, r io.Reader) {
 			log.Fatalf("Expected line of form \"path vcsScheme://vcsHost/user/repo\" but got %q", sc.Text())
 		}
 
+		if *showIndex {
+			indexMap[fields[0]] = fields[1]
+		}
+
 		path := fields[0]
 		u, err := url.Parse(fields[1])
 		if err != nil {
@@ -61,18 +74,62 @@ func buildMux(mux *http.ServeMux, r io.Reader) {
 
 		serveRepo(mux, path, u)
 	}
+
+	if !*showIndex {
+		return
+	}
+
+	var b bytes.Buffer
+	err := template.Must(template.New("").Parse(`<!DOCTYPE html>
+<table>
+{{ $host := .Host }}
+<h1>{{ html $host }}</h1>
+{{ range $root, $repo := .IndexMap }}
+<tr>
+<td><a href="https://{{ html $host }}/{{ html $root }}">{{ html $root }}</a></td>
+<td><a href="{{ html $repo }}">{{ html $repo }}</a></td>
+{{ else }}
+Nothing here.
+{{ end }}
+</table>
+`)).Execute(&b, struct {
+		IndexMap map[string]string
+		Host     string
+	}{
+		IndexMap: indexMap,
+		Host:     host,
+	})
+	if err != nil {
+		log.Fatalf("Couldn't create index page: %v", err)
+	}
+	buf := b.Bytes()
+
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+
+		io.Copy(w, bytes.NewReader(buf))
+	}))
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s fqdn [repos file]", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	host = flag.Arg(0)
+	if host == "" {
+		flag.Usage()
 		os.Exit(-1)
 	}
-	host = os.Args[1]
 
 	reposPath := "repos"
-	if len(os.Args) > 2 {
-		reposPath = os.Args[2]
+	if override := flag.Arg(1); override != "" {
+		reposPath = override
 	}
 
 	mux := http.NewServeMux()

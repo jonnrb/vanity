@@ -5,8 +5,11 @@ Runs a barebones vanity server over HTTP.
 ## Usage
 
 ```
-./vanityserver fqdn [repo file]
+./vanityserver [-index] fqdn [repo file]
 ```
+
+The "-index" flag enables an index page at "/" that lists all repos hosted on
+this server.
 
 If repo file is not given, "./repos" is used. The file has the following format:
 
