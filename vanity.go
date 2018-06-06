@@ -19,7 +19,7 @@ type Option func(*config)
 // Instructs the go tool where to fetch the repo at vcsRoot and the importPath
 // that tree should be rooted at.
 func WithImport(importPath, vcs, vcsRoot string) Option {
-	importTag := "meta name=\"go-import\" content=\"" + importPath + " " +
+	importTag := "<meta name=\"go-import\" content=\"" + importPath + " " +
 		vcs + " " + vcsRoot + "\">"
 	return func(cfg *config) {
 		if cfg.importTag != nil {
@@ -39,7 +39,7 @@ func WithImport(importPath, vcs, vcsRoot string) Option {
 // More information can be found at https://github.com/golang/gddo/wiki/Source-Code-Links.
 //
 func WithSource(prefix, home, directory, file string) Option {
-	sourceTag := "meta name=\"go-source\" content=\"" + prefix + " " +
+	sourceTag := "<meta name=\"go-source\" content=\"" + prefix + " " +
 		home + " " + directory + " " + file + "\">"
 	return func(cfg *config) {
 		if cfg.sourceTag != nil {
