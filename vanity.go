@@ -1,3 +1,7 @@
+/*
+Package vanity implements custom import paths (Go vanity URLs) as an HTTP
+handler that can be installed at the vanity URL.
+*/
 package vanity // import "go.jonnrb.io/vanity"
 
 import (
@@ -105,13 +109,6 @@ Nothing to see here; <a href="{{ . }}">move along</a>.
 
 func handlerFrom(tpl *template.Template, redir Redirector) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Redirect to https.
-		if r.URL.Scheme == "http" {
-			r.URL.Scheme = "https"
-			http.Redirect(w, r, r.URL.String(), http.StatusMovedPermanently)
-			return
-		}
-
 		// Only method supported is GET.
 		if r.Method != http.MethodGet {
 			status := http.StatusMethodNotAllowed

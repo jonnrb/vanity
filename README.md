@@ -8,10 +8,9 @@ BitBucket, etc.). A commonly used vanity import path is
 
 ## Features
 
- - Redirects browsers to godoc.org
+ - Redirects browsers to godoc.org (or somewhere else)
  - Redirects Go tool to VCS
  - Redirects godoc.org to browsable files
- - Redirects HTTP to HTTPS
 
 ## Installation
 
