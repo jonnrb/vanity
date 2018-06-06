@@ -62,33 +62,25 @@ func WithRedirector(redir Redirector) Option {
 	}
 }
 
-// Returns an http.Handler that serves the vanity URL information for a single
-// repository. Each Option gives additional information to agents about the
-// repository or provides help to browsers that may have navigated to the vanity
-// URL. The WithImport Option is mandatory since the go tool requires it to
-// fetch the repository.
-func Handler(opts ...Option) http.Handler {
-	var redir Redirector
+func compile(opts []Option) (*template.Template, Redirector) {
+	// Process options.
+	var cfg config
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 
-	tpl := func() *template.Template {
-		// Process options.
-		var cfg config
-		for _, opt := range opts {
-			opt(&cfg)
-		}
+	// A WithImport is required.
+	if cfg.importTag == nil {
+		panic("vanity: WithImport is required")
+	}
 
-		// A WithImport is required.
-		if cfg.importTag == nil {
-			panic("vanity: WithImport is required")
-		}
+	tags := []string{*cfg.importTag}
+	if cfg.sourceTag != nil {
+		tags = append(tags, *cfg.sourceTag)
+	}
+	tagBlk := strings.Join(tags, "\n")
 
-		tags := []string{*cfg.importTag}
-		if cfg.sourceTag != nil {
-			tags = append(tags, *cfg.sourceTag)
-		}
-		tagBlk := strings.Join(tags, "\n")
-
-		h := fmt.Sprintf(`<!DOCTYPE html>
+	h := fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
@@ -101,16 +93,17 @@ Nothing to see here; <a href="{{ . }}">move along</a>.
 </html>
 `, tagBlk)
 
-		redir = cfg.redir
-		return template.Must(template.New("").Parse(h))
-	}()
-
-	if redir == nil {
-		redir = func(pkg string) string {
+	// Use default GDDO Redirector.
+	if cfg.redir == nil {
+		cfg.redir = func(pkg string) string {
 			return "https://godoc.org/" + pkg
 		}
 	}
 
+	return template.Must(template.New("").Parse(h)), cfg.redir
+}
+
+func handlerFrom(tpl *template.Template, redir Redirector) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Redirect to https.
 		if r.URL.Scheme == "http" {
@@ -140,6 +133,15 @@ Nothing to see here; <a href="{{ . }}">move along</a>.
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
+}
+
+// Returns an http.Handler that serves the vanity URL information for a single
+// repository. Each Option gives additional information to agents about the
+// repository or provides help to browsers that may have navigated to the vanity
+// URL. The WithImport Option is mandatory since the go tool requires it to
+// fetch the repository.
+func Handler(opts ...Option) http.Handler {
+	return handlerFrom(compile(opts))
 }
 
 // Helpers for common VCSs.
