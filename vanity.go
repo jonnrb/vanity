@@ -64,7 +64,8 @@ func WithRedirector(redir Redirector) Option {
 
 // Returns an http.Handler that serves the vanity URL information for a single
 // repository. Each Option gives additional information to agents about the
-// repository or provides help to browsers that may have navigated to the vanity// URL. The WithImport Option is mandatory since the go tool requires it to
+// repository or provides help to browsers that may have navigated to the vanity
+// URL. The WithImport Option is mandatory since the go tool requires it to
 // fetch the repository.
 func Handler(opts ...Option) http.Handler {
 	var redir Redirector
