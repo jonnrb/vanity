@@ -41,9 +41,13 @@ import (
 var (
 	showIndex = flag.Bool("index", false, "Show a list of repos at /")
 	noHealthz = flag.Bool("nohealthz", false, "Disable healthcheck endpoint at /healthz")
+	watch     = flag.Bool("watch", false, "Watch repos file for changes and reload")
 )
 
-var host string
+var (
+	host      string           // param 1
+	reposPath string = "repos" // param 2
+)
 
 func serveRepo(mux *http.ServeMux, root string, u *url.URL) {
 	vcsScheme, vcsHost := u.Scheme, u.Host
@@ -66,7 +70,7 @@ func serveRepo(mux *http.ServeMux, root string, u *url.URL) {
 	mux.Handle("/"+root+"/", h)
 }
 
-func buildMux(mux *http.ServeMux, r io.Reader) {
+func addRepoHandlers(mux *http.ServeMux, r io.Reader) {
 	indexMap := map[string]string{}
 
 	sc := bufio.NewScanner(r)
@@ -142,6 +146,30 @@ func registerHealthz(mux *http.ServeMux) {
 	}))
 }
 
+func buildServer() *http.Server {
+	mux := http.NewServeMux()
+
+	if f, err := os.Open(reposPath); err != nil {
+		log.Fatalf("Error opening repos path: %v", err)
+	} else {
+		addRepoHandlers(mux, f)
+	}
+
+	if !*noHealthz {
+		registerHealthz(mux)
+	}
+
+	return &http.Server{
+		// This should be sufficient.
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		IdleTimeout:  5 * time.Second,
+
+		Addr:    ":8080",
+		Handler: mux,
+	}
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s fqdn [repos file]\n", os.Args[0])
@@ -155,32 +183,11 @@ func main() {
 		os.Exit(-1)
 	}
 
-	reposPath := "repos"
 	if override := flag.Arg(1); override != "" {
 		reposPath = override
 	}
 
-	mux := http.NewServeMux()
-
-	if f, err := os.Open(reposPath); err != nil {
-		log.Fatalf("Error opening repos path: %v", err)
-	} else {
-		buildMux(mux, f)
-	}
-
-	if !*noHealthz {
-		registerHealthz(mux)
-	}
-
-	srv := &http.Server{
-		// This should be sufficient.
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-		IdleTimeout:  5 * time.Second,
-
-		Addr:    ":8080",
-		Handler: mux,
-	}
+	srv := buildServer()
 
 	log.Println(srv.ListenAndServe())
 }
