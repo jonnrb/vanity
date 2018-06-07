@@ -1,0 +1,15 @@
+workspace:
+  base: /go
+  path: src/go.jonnrb.io/vanity
+
+pipeline:
+  build:
+    image: golang:latest
+    commands:
+      - go get -t ./...
+      - go test ./...
+      - go build ./...
+  docker:
+    image: plugins/docker
+    repo: jonnrb/vanityserver
+    secrets: [ docker_username, docker_password ]
