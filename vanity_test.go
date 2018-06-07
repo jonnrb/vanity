@@ -8,83 +8,23 @@ import (
 	"testing"
 )
 
-var addr = "https://kkn.fi"
-
-func TestRedirectFromHttpToHttps(t *testing.T) {
-	res := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "http://kkn.fi", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := Redirect("git", "kkn.fi", "https://github.com/kare")
-	srv.ServeHTTP(res, req)
-	if res.Code != http.StatusMovedPermanently {
-		t.Fatalf("expected response status 301, but got %v", res.Code)
-	}
-	if res.Header().Get("Location") != addr {
-		t.Fatalf("expected response location '%v', but got '%v'", addr, res.Header().Get("Location"))
-	}
-}
-
-func TestHTTPMethodsSupport(t *testing.T) {
-	tests := []struct {
-		method string
-		status int
-	}{
-		{http.MethodGet, http.StatusOK},
-		{http.MethodHead, http.StatusMethodNotAllowed},
-		{http.MethodPost, http.StatusMethodNotAllowed},
-		{http.MethodPut, http.StatusMethodNotAllowed},
-		{http.MethodDelete, http.StatusMethodNotAllowed},
-		{http.MethodTrace, http.StatusMethodNotAllowed},
-		{http.MethodOptions, http.StatusMethodNotAllowed},
-	}
-	for _, test := range tests {
-		req, err := http.NewRequest(test.method, addr+"/gist?go-get=1", nil)
-		if err != nil {
-			t.Skipf("http request with method %v failed with error: %v", test.method, err)
-		}
-		res := httptest.NewRecorder()
-		srv := Redirect("git", "kkn.fi", "https://github.com/kare")
-		srv.ServeHTTP(res, req)
-		if res.Code != test.status {
-			t.Fatalf("Expecting status code %v for method '%v', but got %v", test.status, test.method, res.Code)
-		}
-	}
-}
-
-func TestIndexPageNotFound(t *testing.T) {
-	res := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", addr, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := Redirect("git", "kkn.fi", "https://github.com/kare")
-	srv.ServeHTTP(res, req)
-	if res.Code != http.StatusNotFound {
-		t.Fatalf("Expected response status 404, but got %v", res.Code)
-	}
-}
-
 func TestGoTool(t *testing.T) {
 	tests := []struct {
 		path   string
 		result string
 	}{
-		{"/gist?go-get=1", "kkn.fi/gist git https://github.com/kare/gist"},
-		{"/set?go-get=1", "kkn.fi/set git https://github.com/kare/set"},
-		{"/cmd/vanity?go-get=1", "kkn.fi/cmd/vanity git https://github.com/kare/vanity"},
-		{"/cmd/tcpproxy?go-get=1", "kkn.fi/cmd/tcpproxy git https://github.com/kare/tcpproxy"},
-		{"/pkg/subpkg?go-get=1", "kkn.fi/pkg/subpkg git https://github.com/kare/pkg"},
+		{"/pkg?go-get=1", "go.jonnrb.io/pkg git https://github.com/jonnrb/pkg"},
+		{"/pkg/?go-get=1", "go.jonnrb.io/pkg git https://github.com/jonnrb/pkg"},
+		{"/pkg/subpkg?go-get=1", "go.jonnrb.io/pkg git https://github.com/jonnrb/pkg"},
 	}
 	for _, test := range tests {
 		res := httptest.NewRecorder()
-		req, err := http.NewRequest("GET", addr+test.path, nil)
+		req, err := http.NewRequest("GET", "go.jonnrb.io"+test.path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		srv := Redirect("git", "kkn.fi", "https://github.com/kare")
-		srv.ServeHTTP(res, req)
+		h := GitHubHandler("go.jonnrb.io/pkg", "jonnrb", "pkg", "https")
+		h.ServeHTTP(res, req)
 
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
@@ -112,19 +52,17 @@ func TestBrowserGoDoc(t *testing.T) {
 		path   string
 		result string
 	}{
-		{"/gist", "https://godoc.org/kkn.fi/gist"},
-		{"/set", "https://godoc.org/kkn.fi/set"},
-		{"/cmd/vanity", "https://godoc.org/kkn.fi/cmd/vanity"},
-		{"/cmd/tcpproxy", "https://godoc.org/kkn.fi/cmd/tcpproxy"},
-		{"/pkgabc/sub/foo", "https://godoc.org/kkn.fi/pkgabc/sub"},
+		{"/pkg", "https://godoc.org/go.jonnrb.io/pkg"},
+		{"/pkg/", "https://godoc.org/go.jonnrb.io/pkg"},
+		{"/pkg/sub/foo", "https://godoc.org/go.jonnrb.io/pkg/sub/foo"},
 	}
 	for _, test := range tests {
 		res := httptest.NewRecorder()
-		req, err := http.NewRequest("GET", addr+test.path, nil)
+		req, err := http.NewRequest("GET", "go.jonnrb.io"+test.path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		srv := Redirect("git", "kkn.fi", "https://github.com/kare")
+		srv := GitHubHandler("go.jonnrb.io/pkg", "jonnrb", "pkg", "https")
 		srv.ServeHTTP(res, req)
 
 		if res.Code != http.StatusTemporaryRedirect {
@@ -138,4 +76,16 @@ func TestBrowserGoDoc(t *testing.T) {
 			t.Fatalf("Expecting '%v' be contained in '%v'", test.result, string(body))
 		}
 	}
+}
+
+func ExampleGitHubHandler() {
+	// Redirects the vanity import path "go.jonnrb.io/vanity" to the code hosted
+	// on GitHub by user (or organization) "jonnrb" in repo "vanity" using the
+	// git over "https".
+	h := GitHubHandler("go.jonnrb.io/vanity", "jonnrb", "vanity", "https")
+
+	http.Handle("/vanity", h)
+	http.Handle("/vanity/", h) // to handle requests for subpackages.
+
+	http.ListenAndServe(":http", nil)
 }
