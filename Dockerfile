@@ -1,4 +1,4 @@
-from golang:1.10.1 as build
+from golang:1.10.3 as build
 add . /go/src/go.jonnrb.io/vanity
 workdir /go/src/go.jonnrb.io/vanity
 run go install ./cmd/vanityserver
