@@ -11,4 +11,5 @@ pipeline:
   docker:
     image: plugins/docker
     repo: jonnrb/vanityserver
+    storage_driver: overlay2
     secrets: [ docker_username, docker_password ]
