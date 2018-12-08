@@ -1,12 +1,10 @@
 ---
+kind: pipeline
+name: default
 
 platform:
   os: linux
   arch: amd64
-
-workspace:
-  base: /go
-  path: src/go.jonnrb.io/vanity
 
 steps:
 - name: build
@@ -19,9 +17,9 @@ steps:
   image: plugins/docker
   settings:
     repo: jonnrb/vanityserver
-    secrets:
-    - docker_username
-    - docker_password
-    storage_driver: overlay2
+    username:
+      from_secret: docker_username
+    password:
+      from_secret: docker_password
 
 ...
