@@ -1,15 +1,27 @@
+---
+
+platform:
+  os: linux
+  arch: amd64
+
 workspace:
   base: /go
   path: src/go.jonnrb.io/vanity
 
-pipeline:
-  build:
-    image: golang:latest
-    commands:
-      - go test ./...
-      - go build ./...
-  docker:
-    image: plugins/docker
+steps:
+- name: build
+  image: golang:latest
+  commands:
+  - go test ./...
+  - go build ./...
+
+- name: docker
+  image: plugins/docker
+  settings:
     repo: jonnrb/vanityserver
+    secrets:
+    - docker_username
+    - docker_password
     storage_driver: overlay2
-    secrets: [ docker_username, docker_password ]
+
+...
