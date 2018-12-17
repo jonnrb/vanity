@@ -1,4 +1,4 @@
-from golang:1.11.2 as build
+from quay.io/jonnrb/go as build
 add . /src
 run cd /src && go get -v ./cmd/vanityserver
 
