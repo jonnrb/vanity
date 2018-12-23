@@ -11,6 +11,9 @@ this server.
 The "-nohealthz" flag disables the "/healthz" endpoint that returns a 200 OK
 when everything is OK.
 
+The "-watch" flag watches the repo file for changes. When it is updated, the
+updated version will be used for serving.
+
 If repo file is not given, "./repos" is used. The file has the following format:
 
   pkgroot  vcsScheme://vcsHost/user/repo
@@ -70,7 +73,7 @@ func serveRepo(mux *http.ServeMux, root string, u *url.URL) {
 	mux.Handle("/"+root+"/", h)
 }
 
-func addRepoHandlers(mux *http.ServeMux, r io.Reader) {
+func addRepoHandlers(mux *http.ServeMux, r io.Reader) error {
 	indexMap := map[string]string{}
 
 	sc := bufio.NewScanner(r)
@@ -82,7 +85,7 @@ func addRepoHandlers(mux *http.ServeMux, r io.Reader) {
 		case 2:
 			// Pass
 		default:
-			log.Fatalf("Expected line of form \"path vcsScheme://vcsHost/user/repo\" but got %q", sc.Text())
+			return fmt.Errorf("expected line of form \"path vcsScheme://vcsHost/user/repo\" but got %q", sc.Text())
 		}
 
 		if *showIndex {
@@ -92,14 +95,14 @@ func addRepoHandlers(mux *http.ServeMux, r io.Reader) {
 		path := fields[0]
 		u, err := url.Parse(fields[1])
 		if err != nil {
-			log.Fatalf("Repo was not a valid URL: %q", fields[1])
+			return fmt.Errorf("repo was not a valid URL: %q", fields[1])
 		}
 
 		serveRepo(mux, path, u)
 	}
 
 	if !*showIndex {
-		return
+		return nil
 	}
 
 	var b bytes.Buffer
@@ -123,7 +126,7 @@ Nothing here.
 		Host:     host,
 	})
 	if err != nil {
-		log.Fatalf("Couldn't create index page: %v", err)
+		return fmt.Errorf("couldn't create index page: %v", err)
 	}
 	buf := b.Bytes()
 
@@ -135,30 +138,41 @@ Nothing here.
 
 		io.Copy(w, bytes.NewReader(buf))
 	}))
+	return nil
 }
 
-func registerHealthz(mux *http.ServeMux) {
+func registerHealthz(mux *http.ServeMux, isHealthy func() bool) {
 	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := io.WriteString(w, "OK\r\n")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if isHealthy() {
+			io.WriteString(w, "OK\r\n")
+		} else {
+			http.Error(w, "internal error\r\n", http.StatusInternalServerError)
 		}
 	}))
 }
 
-func buildServer() *http.Server {
+var healthcheck = func() bool {
+	return true
+}
+
+func generateHandler() (http.Handler, error) {
 	mux := http.NewServeMux()
 
-	if f, err := os.Open(reposPath); err != nil {
-		log.Fatalf("Error opening repos path: %v", err)
-	} else {
-		addRepoHandlers(mux, f)
+	f, err := os.Open(reposPath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening %q: %v", reposPath, err)
+	}
+	if err := addRepoHandlers(mux, f); err != nil {
+		return nil, err
 	}
 
 	if !*noHealthz {
-		registerHealthz(mux)
+		registerHealthz(mux, healthcheck)
 	}
+	return mux, nil
+}
 
+func buildServer(h http.Handler) *http.Server {
 	return &http.Server{
 		// This should be sufficient.
 		ReadTimeout:  5 * time.Second,
@@ -166,7 +180,7 @@ func buildServer() *http.Server {
 		IdleTimeout:  5 * time.Second,
 
 		Addr:    ":8080",
-		Handler: mux,
+		Handler: h,
 	}
 }
 
@@ -187,7 +201,21 @@ func main() {
 		reposPath = override
 	}
 
-	srv := buildServer()
+	var h http.Handler
+	if *watch {
+		dh := newDynamicHandler(reposPath, generateHandler)
+		healthcheck = dh.IsHealthy
+		defer dh.Close()
+		h = dh
+	} else {
+		var err error
+		h, err = generateHandler()
+		if err != nil {
+			log.Printf("Error generating handler: %v", err)
+		}
+	}
+
+	srv := buildServer(h)
 
 	log.Println(srv.ListenAndServe())
 }
